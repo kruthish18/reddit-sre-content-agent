@@ -5,6 +5,11 @@ An intelligent n8n workflow that transforms trending DevOps discussions into act
 <img width="888" height="380" alt="Screen Shot 2025-08-06 at 10 09 53 PM" src="https://github.com/user-attachments/assets/faf8e492-351f-4507-829a-4704261e6146" />
 
 
+## Output Email
+<img width="1080" height="637" alt="Screen Shot 2025-08-07 at 2 03 47 PM" src="https://github.com/user-attachments/assets/f1a99263-f0f3-4d1a-9d44-22acbab94da8" />
+
+
+
 ## What It Does
 
 This automated content discovery agent monitors popular DevOps subreddits (r/devops, r/sre, r/kubernetes) and generates two types of weekly content insights:
