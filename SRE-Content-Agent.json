@@ -1,0 +1,256 @@
+{
+  "name": "SRE 2",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "7bbe98c3-d3ca-4eae-9c32-5ab082143cb5",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and clean Reddit posts\nconst filteredPosts = $input.all().map(item => {\n  const post = item.json;\n  \n  // Skip if deleted, removed, or job posts\n  if (post.selftext === '[deleted]' || \n      post.selftext === '[removed]' ||\n      post.title.toLowerCase().includes('hiring') ||\n      post.title.toLowerCase().includes('[job]') ||\n      post.title.toLowerCase().includes('career')) {\n    return null;\n  }\n  \n  // Only keep posts with decent engagement\n  if (post.ups < 5) return null;\n  \n  // Skip if content too short\n  if (post.title.length < 20) return null;\n  \n  return {\n    title: post.title,\n    content: post.selftext || '',\n    url: `https://reddit.com${post.permalink}`,\n    upvotes: post.ups,\n    comments: post.num_comments,\n    subreddit: post.subreddit,\n    author: post.author\n  };\n}).filter(Boolean);\n\n// Limit to top 20 posts for processing\nconst topPosts = filteredPosts.slice(0, 20);\n\nreturn topPosts.map(post => ({ json: post }));"
+      },
+      "id": "844f8b81-b682-4164-996a-a9cf89a4f44d",
+      "name": "Filter Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a content strategist for an AI SRE product. Analyze DevOps discussions and extract content opportunities that relate to site reliability, monitoring, incident response, automation, and infrastructure management."
+            },
+            {
+              "content": "=Analyze this Reddit post and extract: 1) Main pain point or problem discussed 2) Technical context and tools mentioned   3) Potential blog post angle for an AI SRE product 4) Target audience level (beginner/intermediate/advanced)  Post Title: {{$json.title}} Post Content: {{$json.content}} Engagement: {{$json.upvotes}} upvotes, {{$json.comments}} comments"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "5c23af4d-3e71-4484-bbe4-57d5762e0c63",
+      "name": "Analyze Posts",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ImR12mBwf2awsq4q",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "prompt": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "=Generate marketing content ideas for an AI SRE product based on DevOps discussions. Focus on how AI can solve reliability, monitoring, and incident response challenges."
+            },
+            {
+              "content": "=Based on this specific Reddit post analysis:\n{{$json.message.content}}\n\nCreate a blog post idea that DIRECTLY addresses the problems discussed in this Reddit post. Generate:\n\n1) Blog title that references the same problem/tool (50-60 chars)\n2) Newsletter topic focused on this specific issue\n3) 3-4 key points that solve the Reddit post's pain points\n4) How AI SRE specifically fixes what this Reddit post discusses\n\nMake it feel like a direct response/solution to what the Reddit community is struggling with.\nOriginal Reddit discussion: {{$('Filter Posts').item.json.url}}"
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "c7d191a5-cb57-4398-bfca-f9aff0ecae1b",
+      "name": "Generate Content Ideas",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ImR12mBwf2awsq4q",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from different nodes\nconst originalPosts = $('Filter Posts').all();\nconst contentIdeas = $input.all(); // From Generate Content Ideas\n\nlet emailContent = `\n<h2>🚀 Weekly DevOps Content Ideas from Reddit</h2>\n<p>Generated on: ${new Date().toLocaleDateString()}</p>\n<p>Top Reddit Posts: ${originalPosts.length} | Blog Ideas: ${contentIdeas.length}</p>\n<hr>\n`;\n\n// Section 1: Top Reddit Posts\nemailContent += `<h3>📈 Top 20 Reddit Posts</h3>`;\n\noriginalPosts.forEach((post, index) => {\n  emailContent += `\n  <div style=\"border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px;\">\n    <h4>🔥 Top Post #${index + 1}</h4>\n    <p><strong>Title:</strong> <a href=\"${post.json.url}\">${post.json.title}</a></p>\n    <p><strong>Subreddit:</strong> r/${post.json.subreddit} | <strong>Engagement:</strong> ${post.json.upvotes} upvotes, ${post.json.comments} comments</p>\n  </div>\n  `;\n});\n\n// Section 2: Blog Ideas\nemailContent += `\n<hr>\n<h3>💡 Blog Ideas Based on These Posts</h3>\n`;\n\ncontentIdeas.forEach((item, index) => {\n  try {\n    // Handle different OpenAI response structures\nlet aiResponse = '';\nif (item.json.message && item.json.message.content) {\n  aiResponse = item.json.message.content;\n} else if (item.json.choices && item.json.choices[0] && item.json.choices[0].message) {\n  aiResponse = item.json.choices[0].message.content;\n} else if (item.json.text) {\n  aiResponse = item.json.text;\n} else if (item.json.content) {\n  aiResponse = item.json.content;\n} else {\n  aiResponse = 'Blog idea not available';\n}\n    \n    const originalPost = originalPosts[index]?.json;\n    \n    emailContent += `\n    <div style=\"border: 1px solid #28a745; padding: 15px; margin: 15px 0; border-radius: 5px; background: #f8fff9;\">\n      <h4>✍️ Blog Idea #${index + 1}</h4>\n      ${originalPost ? `<p><em>Based on: <a href=\"${originalPost.url}\">${originalPost.title}</a></em></p>` : ''}\n      <div style=\"background: #ffffff; padding: 10px; margin: 10px 0; border-radius: 3px;\">\n        ${aiResponse.replace(/\\n/g, '<br>')}\n      </div>\n    </div>\n    `;\n    \n  } catch (error) {\n    console.log(`Error processing blog idea ${index}:`, error);\n  }\n});\n\nreturn [{ json: { emailBody: emailContent, totalIdeas: contentIdeas.length, totalPosts: originalPosts.length } }];"
+      },
+      "id": "81e78f01-48d2-4ad4-9364-0acbb9caded7",
+      "name": "Compile Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your-n8n@domain.com",
+        "toEmail": "kruthish18@gmail.com",
+        "subject": "=\"🎯 Reddit DevOps Content Ideas - {{new Date().toLocaleDateString()}}\"",
+        "emailFormat": "html",
+        "html": "={{$json.emailBody}}",
+        "options": {}
+      },
+      "id": "53b09926-129d-4481-97da-4a9744f386ed",
+      "name": "Send email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        0
+      ],
+      "webhookId": "ff8bf06b-7033-436d-a144-f20ee642a422",
+      "credentials": {
+        "smtp": {
+          "id": "raoxlpELDi5ZmYpH",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "subreddit": "devops+sre+kubernetes",
+        "limit": 50,
+        "filters": {}
+      },
+      "id": "0076b558-8011-4ef2-8001-2c176a1cdbdd",
+      "name": "Get many posts",
+      "type": "n8n-nodes-base.reddit",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "redditOAuth2Api": {
+          "id": "kyksrZm8JfqjwfWm",
+          "name": "Reddit account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Debug the Analyze Posts output\nconsole.log('Analyze Posts output:', JSON.stringify($input.all()[0], null, 2));\n\n// Pass through unchanged\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "2f84b94b-e5d9-4d59-bdd9-993053aaf12a",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Posts": {
+      "main": [
+        [
+          {
+            "node": "Analyze Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Posts": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Content Ideas": {
+      "main": [
+        [
+          {
+            "node": "Compile Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Email": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many posts": {
+      "main": [
+        [
+          {
+            "node": "Filter Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Generate Content Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "386fa8f4-fa47-4384-b768-c0bfeea98d47",
+  "meta": {
+    "instanceId": "5b3d588ae6718243a4894e79c9a57653f301de36d0219b37ac451dc56ff1621d"
+  },
+  "id": "I0hDFOhKAUlz1OIb",
+  "tags": []
+}
